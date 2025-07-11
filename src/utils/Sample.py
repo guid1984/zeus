@@ -123,4 +123,10 @@ def track_scaling_telemetry(
     table.add_row("Initial Node Count", str(len(initial_nodes)))
     table.add_row("Final Node Count", str(final_nodes))
     table.add_row("New Nodes Added", str(new_node_count))
-    table.add_row("Min Node Ready Time (s)", str_
+    table.add_row("Min Node Ready Time (s)", str(min_t))
+    table.add_row("Max Node Ready Time (s)", str(max_t))
+    table.add_row("Avg Node Ready Time (s)", str(avg_t))
+
+    console.print(table)
+
+    return time_series, node_ready_durations

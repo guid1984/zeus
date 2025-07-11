@@ -187,3 +187,27 @@ def track_dns_resolution_telemetry(
             "error": str(e),
         }
 
+def format_dns_telemetry_table(metrics: list[dict]) -> str:
+    """
+    Return a Markdown-style table summarizing DNS resolution telemetry.
+    """
+    if not metrics:
+        return "No DNS telemetry data available."
+
+    header = "| Host | IP Address | Resolver | Time (ms) | Success | Error |\n"
+    divider = "|------|------------|----------|-----------|---------|-------|\n"
+    rows = []
+
+    for m in metrics:
+        rows.append(
+            f"| {m['host']} "
+            f"| {m.get('ip') or '-'} "
+            f"| {m.get('nameserver') or '-'} "
+            f"| {m.get('duration_ms') or '-'} "
+            f"| {'✅' if m['success'] else '❌'} "
+            f"| {m.get('error', '')[:50]} |"
+        )
+
+    return header + divider + "\n".join(rows)
+
+

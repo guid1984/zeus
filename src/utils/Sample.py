@@ -2,10 +2,15 @@ import os
 import time
 from typing import List, Tuple, Dict
 from collections import defaultdict
+from statistics import mean
 from kubernetes.client import AppsV1Api, CoreV1Api
 from src.utils.logging_util import get_logger
+from rich.table import Table
+from rich.console import Console
 
 logger = get_logger(__name__)
+console = Console()
+
 
 def track_scaling_telemetry(
     apps_api: AppsV1Api,
@@ -70,6 +75,28 @@ def track_scaling_telemetry(
     else:
         logger.warning(f"⚠️ Timeout reached ({timeout}s); only {available} replicas available.")
 
+    # Final summary data
+    final_elapsed = int(time.time() - start_time)
+    final_available = time_series[-1][1]
+    final_nodes = time_series[-1][2]
+
+    # Compute durations
+    node_ready_durations = {
+        node: node_ready_time[node] - node_first_seen[node]
+        for node in node_ready_time
+    }
+
+    new_node_names = set(node_ready_durations.keys()) - initial_nodes
+    new_node_count = len(new_node_names)
+    if new_node_count:
+        durations = [node_ready_durations[n] for n in new_node_names]
+        min_t = min(durations)
+        max_t = max(durations)
+        avg_t = round(mean(durations), 2)
+    else:
+        min_t = max_t = avg_t = 0
+
+    # 📄 CSV Export
     if write_csv:
         with open("scale_time_series.csv", "w") as f:
             f.write("time_sec,available_replicas,total_nodes,ready_nodes\n")
@@ -84,12 +111,16 @@ def track_scaling_telemetry(
                 time_to_ready = ready_at - first_seen
                 f.write(f"{node},{first_seen},{ready_at},{time_to_ready}\n")
 
-        logger.info("📁 Telemetry written to scale_time_series.csv and node_ready_times.csv")
+    # 🧾 Tabular Summary
+    table = Table(title="📈 GKE Scaling Summary", style="bold white")
 
-    # Compute final durations
-    node_ready_durations = {
-        node: node_ready_time[node] - node_first_seen[node]
-        for node in node_ready_time
-    }
+    table.add_column("Metric", style="cyan", no_wrap=True)
+    table.add_column("Value", style="green")
 
-    return time_series, node_ready_durations
+    table.add_row("Target Replicas", str(target_replicas))
+    table.add_row("Achieved Replicas", str(final_available))
+    table.add_row("Total Time (s)", str(final_elapsed))
+    table.add_row("Initial Node Count", str(len(initial_nodes)))
+    table.add_row("Final Node Count", str(final_nodes))
+    table.add_row("New Nodes Added", str(new_node_count))
+    table.add_row("Min Node Ready Time (s)", str_

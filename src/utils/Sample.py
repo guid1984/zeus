@@ -4,9 +4,11 @@ from typing import List, Tuple, Dict
 from collections import defaultdict
 from statistics import mean
 from kubernetes.client import AppsV1Api, CoreV1Api
-from src.utils.logging_util import get_logger
+from app.src.utils.logging_util import get_logger
 from rich.table import Table
 from rich.console import Console
+import dns.resolver
+
 
 logger = get_logger(__name__)
 console = Console()
@@ -130,3 +132,58 @@ def track_scaling_telemetry(
     console.print(table)
 
     return time_series, node_ready_durations
+
+
+def track_dns_resolution_telemetry(
+    host: str,
+    timeout: float = 5.0,
+    expect_nodelocal: bool = True
+) -> Dict[str, Any]:
+    """
+    Resolves the given FQDN and captures telemetry on:
+    - IP address
+    - Resolution time
+    - DNS server used
+    - Whether NodeLocal DNS was used (169.254.20.10)
+
+    Returns a dict containing all metrics.
+    """
+
+    try:
+        resolver = dns.resolver.Resolver()
+        resolver.lifetime = timeout
+        resolver.timeout = timeout
+
+        start = time.time()
+        answer = resolver.resolve(host)
+        end = time.time()
+
+        ip_address = answer[0].to_text()
+        nameserver = resolver.nameservers[0]
+        duration_ms = round((end - start) * 1000, 2)
+
+        logger.info(f"✅ Resolved {host} to {ip_address} via {nameserver} in {duration_ms} ms")
+
+        if expect_nodelocal and not nameserver.startswith("169.254"):
+            logger.warning(f"⚠️ Resolution for {host} did not use NodeLocal DNS (used: {nameserver})")
+
+        return {
+            "host": host,
+            "ip": ip_address,
+            "nameserver": nameserver,
+            "duration_ms": duration_ms,
+            "success": True,
+            "error": "",
+        }
+
+    except Exception as e:
+        logger.error(f"❌ DNS resolution failed for {host}: {e}")
+        return {
+            "host": host,
+            "ip": None,
+            "nameserver": None,
+            "duration_ms": None,
+            "success": False,
+            "error": str(e),
+        }
+

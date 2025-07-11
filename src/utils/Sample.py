@@ -210,4 +210,42 @@ def format_dns_telemetry_table(metrics: list[dict]) -> str:
 
     return header + divider + "\n".join(rows)
 
+from rich.table import Table
+from rich.console import Console
+from typing import List, Dict, Any
+
+console = Console()
+
+def print_dns_telemetry_rich(metrics: List[Dict[str, Any]]):
+    """
+    Print DNS resolution telemetry using rich table format.
+    """
+    if not metrics:
+        console.print("[yellow]⚠️ No DNS telemetry data available.[/yellow]")
+        return
+
+    table = Table(title="DNS Resolution Telemetry", show_lines=True)
+
+    table.add_column("Host", style="cyan", no_wrap=True)
+    table.add_column("IP Address", style="green")
+    table.add_column("Resolver", style="magenta")
+    table.add_column("Time (ms)", justify="right")
+    table.add_column("Success", justify="center")
+    table.add_column("Error", style="red", overflow="fold")
+
+    for m in metrics:
+        table.add_row(
+            m.get("host", "-"),
+            m.get("ip") or "-",
+            m.get("nameserver") or "-",
+            str(m.get("duration_ms") or "-"),
+            "✅" if m.get("success") else "❌",
+            m.get("error", "")[:100]
+        )
+
+    console.print(table)
+
+
+
+
 

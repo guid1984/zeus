@@ -89,40 +89,32 @@ def pytest_sessionfinish(session, exitstatus):
     skipped = len(test_results["skipped"])
     total = test_results["total"]
 
+    # Prepare log lines
     lines = []
-    lines.append("=" * 80)
-    lines.append("✅ Pytest Execution Summary")
-    lines.append("=" * 80)
-    lines.append(f"🧪 Total tests : {total}")
-    lines.append(f"✔ Passed      : {passed}")
-    lines.append(f"❌ Failed      : {failed}")
-    lines.append(f"⚠ Skipped     : {skipped}")
-    lines.append(f"⏱ Duration    : {duration:.2f} seconds")
+    lines.append("📋 Pytest Execution Summary")
+    lines.append(f"🕒 Duration: {duration:.2f} seconds")
+    lines.append(f"✅ Passed: {passed}")
+    lines.append(f"❌ Failed: {failed}")
+    lines.append(f"⚠️ Skipped: {skipped}")
+    lines.append(f"📦 Total: {total}")
 
-    if passed:
-        lines.append("\n✔ Passed Tests:")
-        for t in test_results["passed"]:
-            lines.append(f"  • {t}")
-
-    if failed:
-        lines.append("\n❌ Failed Tests:")
-        for t in test_results["failed"]:
-            lines.append(f"  • {t}")
-
-    if skipped:
-        lines.append("\n⚠ Skipped Tests:")
-        for t in test_results["skipped"]:
-            lines.append(f"  • {t}")
-
-    # DNS Telemetry Summary (if available)
+    # DNS Resolution summary (text-safe)
     if dns_metrics_global:
-        lines.append("\n🌐 DNS Resolution Summary:")
-        lines.append(format_dns_telemetry_table(dns_metrics_global))
+        # Print to console using Rich (visual table)
+        print_dns_telemetry_rich(dns_metrics_global)
 
-    # Combine and print locally
+        # Also include simple text log for CI
+        lines.append("\n🌐 DNS Resolution Summary:")
+        for m in dns_metrics_global:
+            host = m.get("host", "-")
+            success = "✅" if m.get("success") else "❌"
+            duration_ms = m.get("duration_ms", "-")
+            nameserver = m.get("nameserver", "-")
+            lines.append(f"- {host}: {success} ({duration_ms} ms) via {nameserver}")
+
+    # Combine and print the summary
     summary_log = "\n".join(lines)
     logger.info(summary_log)
 
-    # Emit one structured log for GCP/CI
+    # Optional: send structured log for GCP if needed
     logger.bind(summary_type="pytest-summary", component="test-telemetry").info(summary_log)
-

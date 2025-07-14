@@ -84,37 +84,46 @@ def pytest_sessionfinish(session, exitstatus):
     test_results["end_time"] = datetime.utcnow()
     duration = (test_results["end_time"] - test_results["start_time"]).total_seconds()
 
+    # Summary
     passed = len(test_results["passed"])
     failed = len(test_results["failed"])
     skipped = len(test_results["skipped"])
     total = test_results["total"]
 
-    # Prepare log lines
-    lines = []
-    lines.append("📋 Pytest Execution Summary")
-    lines.append(f"🕒 Duration: {duration:.2f} seconds")
-    lines.append(f"✅ Passed: {passed}")
-    lines.append(f"❌ Failed: {failed}")
-    lines.append(f"⚠️ Skipped: {skipped}")
-    lines.append(f"📦 Total: {total}")
+    logger.info("\n📋 Pytest Execution Summary")
+    logger.info(f"🕒 Duration : {duration:.2f} seconds")
+    logger.info(f"✅ Passed   : {passed}")
+    logger.info(f"❌ Failed   : {failed}")
+    logger.info(f"⚠️ Skipped  : {skipped}")
+    logger.info(f"🧮 Total    : {total}")
 
-    # DNS Resolution summary (text-safe)
+    # ✅ DNS Table via Rich
     if dns_metrics_global:
-        # Print to console using Rich (visual table)
-        print_dns_telemetry_rich(dns_metrics_global)
+        console.print("\n🌐 [bold cyan]DNS Resolution Summary[/bold cyan]")
 
-        # Also include simple text log for CI
-        lines.append("\n🌐 DNS Resolution Summary:")
+        table = Table(show_header=True, header_style="bold magenta")
+        table.add_column("Host", style="dim", overflow="fold")
+        table.add_column("IP Address", style="cyan")
+        table.add_column("Time (ms)", justify="right")
+        table.add_column("Nameserver", style="green")
+        table.add_column("Status", justify="center")
+
         for m in dns_metrics_global:
-            host = m.get("host", "-")
-            success = "✅" if m.get("success") else "❌"
-            duration_ms = m.get("duration_ms", "-")
-            nameserver = m.get("nameserver", "-")
-            lines.append(f"- {host}: {success} ({duration_ms} ms) via {nameserver}")
+            status_icon = "[green]✅[/green]" if m["success"] else "[red]❌[/red]"
+            table.add_row(
+                m["host"],
+                m.get("ip_address", "-"),
+                f"{m.get('duration_ms', '-')} ms",
+                m.get("nameserver", "-"),
+                status_icon
+            )
 
-    # Combine and print the summary
-    summary_log = "\n".join(lines)
-    logger.info(summary_log)
+        console.print(table)
 
-    # Optional: send structured log for GCP if needed
-    logger.bind(summary_type="pytest-summary", component="test-telemetry").info(summary_log)
+        # Optional: plain text version to GCP log
+        plain_summary = "\n🌐 DNS Resolution Summary:\n"
+        for m in dns_metrics_global:
+            plain_summary += f"- {m['host']}: {'✅' if m['success'] else '❌'}"
+            plain_summary += f" ({m.get('duration_ms', '-') or '-'} ms)"
+            plain_summary += f" via {m.get('nameserver', '-')}\n"
+        logger.bind(summary_type="pytest-summary", component="test-telemetry").info(plain_summary)

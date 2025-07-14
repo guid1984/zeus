@@ -80,40 +80,44 @@ def pytest_runtest_makereport(item, call):
             test_results["skipped"].append(nodeid)
 
 
+@pytest.hookimpl(trylast=True)
 def pytest_sessionfinish(session, exitstatus):
     test_results["end_time"] = datetime.utcnow()
     duration = test_results["end_time"] - test_results["start_time"]
 
-    # Summary counts
-    passed = len(test_results["passed"])
-    failed = len(test_results["failed"])
-    skipped = len(test_results["skipped"])
-    total = test_results["total"]
+    # Collect log lines
+    lines = []
+    lines.append("📄 Pytest Execution Summary")
+    lines.append(f"🕒 Duration: {duration.total_seconds():.2f} seconds")
+    lines.append(f"✅ Passed: {len(test_results['passed'])}")
+    lines.append(f"❌ Failed: {len(test_results['failed'])}")
+    lines.append(f"⚠️ Skipped: {len(test_results['skipped'])}")
+    lines.append(f"📦 Total: {test_results['total']}")
 
-    # Print overall result summary
-    logger = logging.getLogger("pytest-summary")
-    logger.info(f"\n🧪 Pytest Execution Summary")
-    logger.info(f"⏱️ Duration: {duration.total_seconds():.2f} seconds")
-    logger.info(f"✅ Passed: {passed}")
-    logger.info(f"❌ Failed: {failed}")
-    logger.info(f"⚠️ Skipped: {skipped}")
-    logger.info(f"📦 Total: {total}\n")
-
-    # Print test names by category
     if test_results["passed"]:
-        logger.info("✅ Passed Tests:")
-        for t in test_results["passed"]:
-            logger.info(f"  • {t}")
+        lines.append("\n✅ Passed Tests:")
+        lines.extend([f"  - {t}" for t in test_results["passed"]])
     if test_results["failed"]:
-        logger.error("❌ Failed Tests:")
-        for t in test_results["failed"]:
-            logger.error(f"  • {t}")
+        lines.append("\n❌ Failed Tests:")
+        lines.extend([f"  - {t}" for t in test_results["failed"]])
     if test_results["skipped"]:
-        logger.warning("⚠️ Skipped Tests:")
-        for t in test_results["skipped"]:
-            logger.warning(f"  • {t}")
+        lines.append("\n⚠️ Skipped Tests:")
+        lines.extend([f"  - {t}" for t in test_results["skipped"]])
 
-    # DNS Resolution Summary as Rich table (if available)
+    # DNS Telemetry Summary
+    if dns_metrics_global:
+        lines.append("\n🌐 DNS Resolution Summary")
+        for m in dns_metrics_global:
+            lines.append(
+                f"  {m.get('host', '-')}: {m.get('ip_address', '-')} "
+                f"via {m.get('nameserver', '-')} in {m.get('duration_ms', '-')} ms"
+            )
+
+    # Join into single string for structured log
+    summary_log = "\n".join(lines)
+    logger.bind(summary_type="pytest-summary", component="test-telemetry").info(summary_log)
+
+    # Also print rich table locally (optional)
     if dns_metrics_global:
         table = Table(title="DNS Resolution Telemetry", show_lines=True, expand=True)
         table.add_column("Host", style="cyan", no_wrap=False)
@@ -124,23 +128,12 @@ def pytest_sessionfinish(session, exitstatus):
         table.add_column("Error", style="red", overflow="fold", min_width=60)
 
         for m in dns_metrics_global:
-            status_icon = "[green]✅[/green]" if m.get("success") else "[red]❌[/red]"
             table.add_row(
                 m.get("host", "-"),
                 m.get("ip_address", "-"),
                 m.get("nameserver", "-"),
                 f"{m.get('duration_ms', '-')}",
-                status_icon,
-                m.get("error", "") or ""
+                "[green]✅[/green]" if m.get("success") else "[red]❌[/red]",
+                m.get("error", "") or "-"
             )
-        console.print("\n[bold cyan]🧭 DNS Resolution Summary[/bold cyan]")
         console.print(table)
-
-        # Optional plain log for GCP
-        dns_plain_log = "\nDNS Resolution Summary:\n"
-        for m in dns_metrics_global:
-            dns_plain_log += f"{m['host']} → {m.get('ip_address')} in {m.get('duration_ms')} ms via {m.get('nameserver')}\n"
-        logger.bind(summary_type="dns-telemetry", component="pytest").info(dns_plain_log)
-
-    # Emit full test_results dict for structured log
-    logger.bind(summary_type="pytest-results", component="pytest").info(test_results)

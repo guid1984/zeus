@@ -79,51 +79,68 @@ def pytest_runtest_makereport(item, call):
         elif result.outcome == "skipped":
             test_results["skipped"].append(nodeid)
 
-@pytest.hookimpl(trylast=True)
+
 def pytest_sessionfinish(session, exitstatus):
     test_results["end_time"] = datetime.utcnow()
-    duration = (test_results["end_time"] - test_results["start_time"]).total_seconds()
+    duration = test_results["end_time"] - test_results["start_time"]
 
-    # Summary
+    # Summary counts
     passed = len(test_results["passed"])
     failed = len(test_results["failed"])
     skipped = len(test_results["skipped"])
     total = test_results["total"]
 
-    logger.info("\n📋 Pytest Execution Summary")
-    logger.info(f"🕒 Duration : {duration:.2f} seconds")
-    logger.info(f"✅ Passed   : {passed}")
-    logger.info(f"❌ Failed   : {failed}")
-    logger.info(f"⚠️ Skipped  : {skipped}")
-    logger.info(f"🧮 Total    : {total}")
+    # Print overall result summary
+    logger = logging.getLogger("pytest-summary")
+    logger.info(f"\n🧪 Pytest Execution Summary")
+    logger.info(f"⏱️ Duration: {duration.total_seconds():.2f} seconds")
+    logger.info(f"✅ Passed: {passed}")
+    logger.info(f"❌ Failed: {failed}")
+    logger.info(f"⚠️ Skipped: {skipped}")
+    logger.info(f"📦 Total: {total}\n")
 
-    # ✅ DNS Table via Rich
+    # Print test names by category
+    if test_results["passed"]:
+        logger.info("✅ Passed Tests:")
+        for t in test_results["passed"]:
+            logger.info(f"  • {t}")
+    if test_results["failed"]:
+        logger.error("❌ Failed Tests:")
+        for t in test_results["failed"]:
+            logger.error(f"  • {t}")
+    if test_results["skipped"]:
+        logger.warning("⚠️ Skipped Tests:")
+        for t in test_results["skipped"]:
+            logger.warning(f"  • {t}")
+
+    # DNS Resolution Summary as Rich table (if available)
     if dns_metrics_global:
-        console.print("\n🌐 [bold cyan]DNS Resolution Summary[/bold cyan]")
-
-        table = Table(show_header=True, header_style="bold magenta")
-        table.add_column("Host", style="dim", overflow="fold")
-        table.add_column("IP Address", style="cyan")
-        table.add_column("Time (ms)", justify="right")
-        table.add_column("Nameserver", style="green")
-        table.add_column("Status", justify="center")
+        table = Table(title="DNS Resolution Telemetry", show_lines=True, expand=True)
+        table.add_column("Host", style="cyan", no_wrap=False)
+        table.add_column("IP Address", style="green", min_width=15, overflow="fold")
+        table.add_column("Resolver", style="magenta", min_width=15, overflow="fold")
+        table.add_column("Time (ms)", justify="right", min_width=10)
+        table.add_column("Success", justify="center", min_width=7)
+        table.add_column("Error", style="red", overflow="fold", min_width=60)
 
         for m in dns_metrics_global:
-            status_icon = "[green]✅[/green]" if m["success"] else "[red]❌[/red]"
+            status_icon = "[green]✅[/green]" if m.get("success") else "[red]❌[/red]"
             table.add_row(
-                m["host"],
+                m.get("host", "-"),
                 m.get("ip_address", "-"),
-                f"{m.get('duration_ms', '-')} ms",
                 m.get("nameserver", "-"),
-                status_icon
+                f"{m.get('duration_ms', '-')}",
+                status_icon,
+                m.get("error", "") or ""
             )
-
+        console.print("\n[bold cyan]🧭 DNS Resolution Summary[/bold cyan]")
         console.print(table)
 
-        # Optional: plain text version to GCP log
-        plain_summary = "\n🌐 DNS Resolution Summary:\n"
+        # Optional plain log for GCP
+        dns_plain_log = "\nDNS Resolution Summary:\n"
         for m in dns_metrics_global:
-            plain_summary += f"- {m['host']}: {'✅' if m['success'] else '❌'}"
-            plain_summary += f" ({m.get('duration_ms', '-') or '-'} ms)"
-            plain_summary += f" via {m.get('nameserver', '-')}\n"
-        logger.bind(summary_type="pytest-summary", component="test-telemetry").info(plain_summary)
+            dns_plain_log += f"{m['host']} → {m.get('ip_address')} in {m.get('duration_ms')} ms via {m.get('nameserver')}\n"
+        logger.bind(summary_type="dns-telemetry", component="pytest").info(dns_plain_log)
+
+    # Emit full test_results dict for structured log
+    logger.bind(summary_type="pytest-results", component="pytest").info(test_results)

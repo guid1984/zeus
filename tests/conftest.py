@@ -82,30 +82,47 @@ def pytest_runtest_makereport(item, call):
 @pytest.hookimpl(trylast=True)
 def pytest_sessionfinish(session, exitstatus):
     test_results["end_time"] = datetime.utcnow()
-
     duration = (test_results["end_time"] - test_results["start_time"]).total_seconds()
 
-    # Rich summary (optional)
     passed = len(test_results["passed"])
     failed = len(test_results["failed"])
     skipped = len(test_results["skipped"])
     total = test_results["total"]
 
-    logger = logging.getLogger("pytest-summary")
-    logger.info("\n" + "="*60)
-    logger.info("✅ Pytest Execution Summary")
-    logger.info("="*60)
-    logger.info(f"Total tests   : {total}")
-    logger.info(f"✔ Passed      : {passed}")
-    logger.info(f"❌ Failed      : {failed}")
-    logger.info(f"⚠ Skipped     : {skipped}")
-    logger.info(f"🕒 Duration    : {duration:.2f} seconds")
+    lines = []
+    lines.append("=" * 80)
+    lines.append("✅ Pytest Execution Summary")
+    lines.append("=" * 80)
+    lines.append(f"🧪 Total tests : {total}")
+    lines.append(f"✔ Passed      : {passed}")
+    lines.append(f"❌ Failed      : {failed}")
+    lines.append(f"⚠ Skipped     : {skipped}")
+    lines.append(f"⏱ Duration    : {duration:.2f} seconds")
+
+    if passed:
+        lines.append("\n✔ Passed Tests:")
+        for t in test_results["passed"]:
+            lines.append(f"  • {t}")
 
     if failed:
-        logger.info("-" * 60)
-        logger.info("❌ Failed Tests:")
-        for test in test_results["failed"]:
-            logger.info(f"• {test}")
+        lines.append("\n❌ Failed Tests:")
+        for t in test_results["failed"]:
+            lines.append(f"  • {t}")
 
+    if skipped:
+        lines.append("\n⚠ Skipped Tests:")
+        for t in test_results["skipped"]:
+            lines.append(f"  • {t}")
 
+    # DNS Telemetry Summary (if available)
+    if dns_metrics_global:
+        lines.append("\n🌐 DNS Resolution Summary:")
+        lines.append(format_dns_telemetry_table(dns_metrics_global))
+
+    # Combine and print locally
+    summary_log = "\n".join(lines)
+    logger.info(summary_log)
+
+    # Emit one structured log for GCP/CI
+    logger.bind(summary_type="pytest-summary", component="test-telemetry").info(summary_log)
 
